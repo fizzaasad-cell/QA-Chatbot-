@@ -41,3 +41,23 @@ def test_get_response_returns_text_and_tokens():
         system=chatbot.SYSTEM_PROMPT,
         messages=[{"role": "user", "content": "Write test cases for login"}],
     )
+
+
+def test_get_response_returns_error_dict_on_api_failure():
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = Exception("Connection timed out")
+
+    original_client = chatbot._client
+    chatbot._client = mock_client
+
+    try:
+        result = chatbot.get_response(
+            messages=[{"role": "user", "content": "test"}],
+            session_id="test-session-abc",
+        )
+    finally:
+        chatbot._client = original_client
+
+    assert "error" in result
+    assert "Connection timed out" in result["error"]
+    assert "text" not in result

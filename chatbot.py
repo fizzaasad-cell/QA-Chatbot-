@@ -26,14 +26,17 @@ _client = anthropic.Anthropic(api_key=_api_key)
 @traceable(name="qa-chatbot-response")
 def get_response(messages: list[dict], session_id: str) -> dict[str, str | int]:
     # session_id is passed as LangSmith trace metadata by the caller via langsmith_extra
-    response = _client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=_MAX_TOKENS,
-        system=SYSTEM_PROMPT,
-        messages=messages,
-    )
-    return {
-        "text": response.content[0].text,
-        "input_tokens": response.usage.input_tokens,
-        "output_tokens": response.usage.output_tokens,
-    }
+    try:
+        response = _client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=_MAX_TOKENS,
+            system=SYSTEM_PROMPT,
+            messages=messages,
+        )
+        return {
+            "text": response.content[0].text,
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+        }
+    except Exception as e:
+        return {"error": str(e)}

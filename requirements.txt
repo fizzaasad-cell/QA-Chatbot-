@@ -1,0 +1,5 @@
+anthropic
+langsmith
+streamlit
+python-dotenv
+pytest

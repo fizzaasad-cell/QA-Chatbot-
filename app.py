@@ -9,6 +9,8 @@ import chatbot
 
 load_dotenv()
 
+LANGSMITH_PROJECT = os.getenv("LANGCHAIN_PROJECT", "qa-chatbot")
+
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(page_title="QA Assistant", layout="wide")
 
@@ -30,8 +32,7 @@ with st.sidebar:
 
     st.markdown(f"**Messages sent:** {st.session_state.total_messages}")
 
-    project = os.getenv("LANGCHAIN_PROJECT", "qa-chatbot")
-    langsmith_url = f"https://smith.langchain.com/projects/{project}"
+    langsmith_url = f"https://smith.langchain.com/projects/{LANGSMITH_PROJECT}"
     st.markdown(f"[View traces in LangSmith]({langsmith_url})")
 
     st.divider()
@@ -75,13 +76,18 @@ if user_input := st.chat_input("Ask a testing question..."):
                     "metadata": {
                         "session_id": st.session_state.session_id,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "project": project,
+                        "project": LANGSMITH_PROJECT,
                     }
                 },
             )
 
         if "error" in result:
             st.error(f"Error communicating with Claude: {result['error']}")
+            # Store a placeholder so history stays in sync with total_messages
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": f"_(Error: {result['error']})_",
+            })
         else:
             st.markdown(result["text"])
             st.caption(

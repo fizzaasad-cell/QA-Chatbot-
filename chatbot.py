@@ -24,7 +24,7 @@ _client = anthropic.Anthropic(api_key=_api_key)
 
 
 @traceable(name="qa-chatbot-response")
-def get_response(messages: list[dict], session_id: str) -> dict[str, str | int]:
+def get_response(messages: list[dict], session_id: str, **kwargs) -> dict[str, str | int]:
     """
     Returns {"text": str, "input_tokens": int, "output_tokens": int} on success,
     or {"error": str} on API failure. Callers should check for "error" key first.

@@ -35,3 +35,9 @@ def test_get_response_returns_text_and_tokens():
     assert result["text"] == "Use equivalence partitioning for login fields."
     assert result["input_tokens"] == 120
     assert result["output_tokens"] == 45
+    mock_client.messages.create.assert_called_once_with(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+        system=chatbot.SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": "Write test cases for login"}],
+    )

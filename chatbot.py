@@ -15,14 +15,20 @@ Help users with:
 
 Always respond in a structured, practical format."""
 
-_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+_MAX_TOKENS = 1024  # Increase if Claude's responses are getting truncated
+
+_api_key = os.getenv("ANTHROPIC_API_KEY")
+if not _api_key:
+    raise EnvironmentError("ANTHROPIC_API_KEY is not set. Add it to your .env file.")
+_client = anthropic.Anthropic(api_key=_api_key)
 
 
 @traceable(name="qa-chatbot-response")
-def get_response(messages: list, session_id: str) -> dict:
+def get_response(messages: list[dict], session_id: str) -> dict[str, str | int]:
+    # session_id is passed as LangSmith trace metadata by the caller via langsmith_extra
     response = _client.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=1024,
+        max_tokens=_MAX_TOKENS,
         system=SYSTEM_PROMPT,
         messages=messages,
     )

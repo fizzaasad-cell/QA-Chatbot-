@@ -254,3 +254,68 @@ def delete_example(index: int, store: dict) -> None:
     if 0 <= index < len(store["few_shot_examples"]):
         store["few_shot_examples"].pop(index)
         save_store(store)
+
+
+def _keyword_score(text: str, keywords: set[str]) -> int:
+    """Count how many keywords appear in the normalized text."""
+    normalized = normalize(text)
+    return sum(1 for kw in keywords if kw in normalized)
+
+
+def select_relevant(store: dict, user_query: str) -> dict:
+    """Select the most relevant rules and examples for the current user query.
+
+    Scores entries by keyword overlap with the query.
+    Falls back to most-recent entries when no keyword match is found.
+    Caps output at INJECT_RULES rules and INJECT_EXAMPLES examples.
+    """
+    words = set(re.sub(r'[^a-z0-9 ]', '', user_query.lower()).split()) - STOP_WORDS
+    rules = store.get("avoid_rules", [])
+    examples = store.get("few_shot_examples", [])
+
+    if words:
+        scored_rules = sorted(rules, key=lambda r: _keyword_score(r, words), reverse=True)
+        scored_examples = sorted(
+            examples,
+            key=lambda ex: _keyword_score(ex.get("user", "") + " " + ex.get("assistant", ""), words),
+            reverse=True,
+        )
+        top_rules = scored_rules[:INJECT_RULES]
+        top_examples = scored_examples[:INJECT_EXAMPLES]
+
+        if not any(_keyword_score(r, words) > 0 for r in top_rules):
+            top_rules = rules[-INJECT_RULES:]
+        if not any(_keyword_score(ex.get("user", "") + " " + ex.get("assistant", ""), words) > 0 for ex in top_examples):
+            top_examples = examples[-INJECT_EXAMPLES:]
+    else:
+        top_rules = rules[-INJECT_RULES:]
+        top_examples = examples[-INJECT_EXAMPLES:]
+
+    return {"avoid_rules": top_rules, "few_shot_examples": top_examples}
+
+
+def build_feedback_suffix(selected: dict) -> str:
+    """Build the prompt suffix string from selected rules and examples.
+
+    Returns empty string if nothing to inject.
+    """
+    rules = selected.get("avoid_rules", [])
+    examples = selected.get("few_shot_examples", [])
+
+    if not rules and not examples:
+        return ""
+
+    parts = ["--- LEARNED FROM USER FEEDBACK ---"]
+
+    if rules:
+        parts.append("\n## Rules to avoid (based on past feedback):")
+        for rule in rules:
+            parts.append(f"- {rule}")
+
+    if examples:
+        parts.append("\n## Examples of ideal responses:")
+        for ex in examples:
+            parts.append(f"\nUser: {ex['user']}")
+            parts.append(f"Assistant: {ex['assistant']}")
+
+    return "\n".join(parts)

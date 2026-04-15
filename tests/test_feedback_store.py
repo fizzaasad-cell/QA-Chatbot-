@@ -230,3 +230,67 @@ def test_delete_example_removes_by_index(tmp_path, monkeypatch):
     store = {"avoid_rules": [], "few_shot_examples": [ex0, ex1], "feedback_log": []}
     feedback_store.delete_example(0, store)
     assert store["few_shot_examples"] == [ex1]
+
+
+def test_select_relevant_scores_by_keyword_match():
+    store = {
+        "avoid_rules": [
+            "Do not skip boundary values for password fields",
+            "Always include preconditions for payment flows",
+        ],
+        "few_shot_examples": [
+            {"user": "Write login test cases", "assistant": "TC_LOGIN_001", "saved_at": ""},
+            {"user": "Write payment test cases", "assistant": "TC_PAY_001", "saved_at": ""},
+        ],
+        "feedback_log": [],
+    }
+    selected = feedback_store.select_relevant(store, "Write test cases for login password")
+    assert "Do not skip boundary values for password fields" in selected["avoid_rules"]
+    assert any("TC_LOGIN_001" in ex["assistant"] for ex in selected["few_shot_examples"])
+
+
+def test_select_relevant_falls_back_to_recency_when_no_keyword_match():
+    store = {
+        "avoid_rules": ["rule about alpha", "rule about beta", "rule about gamma"],
+        "few_shot_examples": [],
+        "feedback_log": [],
+    }
+    selected = feedback_store.select_relevant(store, "xyz completely unrelated query")
+    assert "rule about gamma" in selected["avoid_rules"]
+
+
+def test_select_relevant_caps_results():
+    store = {
+        "avoid_rules": [f"rule {i}" for i in range(5)],
+        "few_shot_examples": [
+            {"user": f"user {i}", "assistant": f"answer {i}", "saved_at": ""} for i in range(3)
+        ],
+        "feedback_log": [],
+    }
+    selected = feedback_store.select_relevant(store, "some query")
+    assert len(selected["avoid_rules"]) <= 3
+    assert len(selected["few_shot_examples"]) <= 2
+
+
+def test_build_feedback_suffix_returns_empty_for_empty_store():
+    selected = {"avoid_rules": [], "few_shot_examples": []}
+    assert feedback_store.build_feedback_suffix(selected) == ""
+
+
+def test_build_feedback_suffix_includes_rules_and_examples():
+    selected = {
+        "avoid_rules": ["Do not use vague expected results"],
+        "few_shot_examples": [{"user": "Write login tests", "assistant": "TC_LOGIN_001"}],
+    }
+    suffix = feedback_store.build_feedback_suffix(selected)
+    assert "Do not use vague expected results" in suffix
+    assert "Write login tests" in suffix
+    assert "TC_LOGIN_001" in suffix
+    assert "LEARNED FROM USER FEEDBACK" in suffix
+
+
+def test_build_feedback_suffix_rules_only():
+    selected = {"avoid_rules": ["Some rule"], "few_shot_examples": []}
+    suffix = feedback_store.build_feedback_suffix(selected)
+    assert "Some rule" in suffix
+    assert "Examples" not in suffix

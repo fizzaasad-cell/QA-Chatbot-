@@ -136,3 +136,97 @@ def test_distill_rule_falls_back_to_truncated_comment_on_error():
         m.create.side_effect = Exception("timeout")
         result = feedback_store.distill_rule("x" * 200)
     assert len(result) <= 120
+
+
+def _mock_store():
+    return {"avoid_rules": [], "few_shot_examples": [], "feedback_log": []}
+
+
+def test_add_positive_saves_example_when_valid(tmp_path, monkeypatch):
+    monkeypatch.setattr(feedback_store, "STORE_FILE", tmp_path / "store.json")
+    store = _mock_store()
+    with patch.object(feedback_store, "validate_positive", return_value=True):
+        result = feedback_store.add_positive("user q", "assistant answer", store)
+    assert result == "saved"
+    assert len(store["few_shot_examples"]) == 1
+    assert store["few_shot_examples"][0]["user"] == "user q"
+
+
+def test_add_positive_skips_when_invalid(tmp_path, monkeypatch):
+    monkeypatch.setattr(feedback_store, "STORE_FILE", tmp_path / "store.json")
+    store = _mock_store()
+    with patch.object(feedback_store, "validate_positive", return_value=False):
+        result = feedback_store.add_positive("user q", "assistant answer", store)
+    assert result == "skipped_validation"
+    assert len(store["few_shot_examples"]) == 0
+    assert len(store["feedback_log"]) == 1
+
+
+def test_add_positive_skips_duplicate(tmp_path, monkeypatch):
+    monkeypatch.setattr(feedback_store, "STORE_FILE", tmp_path / "store.json")
+    store = _mock_store()
+    store["few_shot_examples"] = [{"user": "u", "assistant": "assistant answer", "saved_at": "2026-01-01"}]
+    with patch.object(feedback_store, "validate_positive", return_value=True):
+        result = feedback_store.add_positive("user q", "assistant answer", store)
+    assert result == "skipped_duplicate"
+    assert len(store["few_shot_examples"]) == 1
+
+
+def test_add_positive_enforces_cap(tmp_path, monkeypatch):
+    monkeypatch.setattr(feedback_store, "STORE_FILE", tmp_path / "store.json")
+    store = _mock_store()
+    store["few_shot_examples"] = [
+        {"user": "u1", "assistant": f"answer {i}", "saved_at": "2026-01-01"} for i in range(3)
+    ]
+    with patch.object(feedback_store, "validate_positive", return_value=True):
+        result = feedback_store.add_positive("new user", "brand new answer xyz", store)
+    assert result == "saved"
+    assert len(store["few_shot_examples"]) == 3
+    assert store["few_shot_examples"][-1]["user"] == "new user"
+
+
+def test_add_negative_saves_rule_when_valid(tmp_path, monkeypatch):
+    monkeypatch.setattr(feedback_store, "STORE_FILE", tmp_path / "store.json")
+    store = _mock_store()
+    with patch.object(feedback_store, "validate_negative", return_value=True), \
+         patch.object(feedback_store, "distill_rule", return_value="Do not skip boundary values"):
+        result = feedback_store.add_negative("missed boundaries", "user q", "assistant a", store)
+    assert result == "saved"
+    assert "Do not skip boundary values" in store["avoid_rules"]
+
+
+def test_add_negative_skips_when_invalid(tmp_path, monkeypatch):
+    monkeypatch.setattr(feedback_store, "STORE_FILE", tmp_path / "store.json")
+    store = _mock_store()
+    with patch.object(feedback_store, "validate_negative", return_value=False):
+        result = feedback_store.add_negative("bad comment", "user q", "assistant a", store)
+    assert result == "skipped_validation"
+    assert store["avoid_rules"] == []
+    assert len(store["feedback_log"]) == 1
+
+
+def test_add_negative_enforces_cap(tmp_path, monkeypatch):
+    monkeypatch.setattr(feedback_store, "STORE_FILE", tmp_path / "store.json")
+    store = _mock_store()
+    store["avoid_rules"] = [f"rule {i}" for i in range(5)]
+    with patch.object(feedback_store, "validate_negative", return_value=True), \
+         patch.object(feedback_store, "distill_rule", return_value="brand new distinct rule abc"):
+        feedback_store.add_negative("comment", "user q", "assistant a", store)
+    assert len(store["avoid_rules"]) == 5
+    assert store["avoid_rules"][-1] == "brand new distinct rule abc"
+
+
+def test_delete_rule_removes_by_index(tmp_path, monkeypatch):
+    monkeypatch.setattr(feedback_store, "STORE_FILE", tmp_path / "store.json")
+    store = {"avoid_rules": ["rule0", "rule1", "rule2"], "few_shot_examples": [], "feedback_log": []}
+    feedback_store.delete_rule(1, store)
+    assert store["avoid_rules"] == ["rule0", "rule2"]
+
+
+def test_delete_example_removes_by_index(tmp_path, monkeypatch):
+    monkeypatch.setattr(feedback_store, "STORE_FILE", tmp_path / "store.json")
+    ex0 = {"user": "u0", "assistant": "a0", "saved_at": ""}
+    ex1 = {"user": "u1", "assistant": "a1", "saved_at": ""}
+    store = {"avoid_rules": [], "few_shot_examples": [ex0, ex1], "feedback_log": []}
+    feedback_store.delete_example(0, store)
+    assert store["few_shot_examples"] == [ex1]

@@ -139,3 +139,118 @@ def distill_rule(comment: str) -> str:
         return resp.content[0].text.strip()
     except Exception:
         return comment[:120]
+
+
+def _log_entry(
+    store: dict,
+    rating: str,
+    raw_comment: str,
+    user_msg: str,
+    assistant_msg: str,
+    validated: bool,
+    distilled_rule: str = "",
+    session_id: str = "",
+) -> None:
+    entry = {
+        "session_id": session_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "rating": rating,
+        "raw_comment": raw_comment,
+        "validated": validated,
+        "user_message": user_msg,
+        "assistant_response": assistant_msg[:500],
+    }
+    if distilled_rule:
+        entry["distilled_rule"] = distilled_rule
+    store["feedback_log"].append(entry)
+
+
+def add_positive(
+    user_msg: str,
+    assistant_msg: str,
+    store: dict,
+    session_id: str = "",
+) -> str:
+    """Validate and save a thumbs-up as a few-shot example.
+
+    Returns: 'saved' | 'skipped_validation' | 'skipped_duplicate'.
+    Mutates store in-place and persists to disk on every call.
+    """
+    masked_user = mask_sensitive(user_msg)
+    masked_assistant = mask_sensitive(assistant_msg)
+
+    if not validate_positive(masked_assistant):
+        _log_entry(store, "up", "", masked_user, masked_assistant, validated=False, session_id=session_id)
+        save_store(store)
+        return "skipped_validation"
+
+    existing_assistants = [ex["assistant"] for ex in store["few_shot_examples"]]
+    if is_duplicate(masked_assistant, existing_assistants):
+        _log_entry(store, "up", "", masked_user, masked_assistant, validated=True, session_id=session_id)
+        save_store(store)
+        return "skipped_duplicate"
+
+    if len(store["few_shot_examples"]) >= MAX_EXAMPLES:
+        store["few_shot_examples"].pop(0)
+
+    store["few_shot_examples"].append({
+        "user": masked_user,
+        "assistant": masked_assistant,
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    _log_entry(store, "up", "", masked_user, masked_assistant, validated=True, session_id=session_id)
+    save_store(store)
+    return "saved"
+
+
+def add_negative(
+    comment: str,
+    user_msg: str,
+    assistant_msg: str,
+    store: dict,
+    session_id: str = "",
+) -> str:
+    """Validate, distill, and save a thumbs-down comment as an avoid-rule.
+
+    Returns: 'saved' | 'skipped_validation' | 'skipped_duplicate'.
+    Mutates store in-place and persists to disk on every call.
+    """
+    masked_comment = mask_sensitive(comment) if comment else ""
+    masked_user = mask_sensitive(user_msg)
+    masked_assistant = mask_sensitive(assistant_msg)
+
+    if not masked_comment or not validate_negative(masked_comment):
+        _log_entry(store, "down", masked_comment, masked_user, masked_assistant, validated=False, session_id=session_id)
+        save_store(store)
+        return "skipped_validation"
+
+    rule = distill_rule(masked_comment)
+
+    if is_duplicate(rule, store["avoid_rules"]):
+        _log_entry(store, "down", masked_comment, masked_user, masked_assistant, validated=True, distilled_rule=rule, session_id=session_id)
+        save_store(store)
+        return "skipped_duplicate"
+
+    if len(store["avoid_rules"]) >= MAX_RULES:
+        store["avoid_rules"].pop(0)
+
+    store["avoid_rules"].append(rule)
+
+    _log_entry(store, "down", masked_comment, masked_user, masked_assistant, validated=True, distilled_rule=rule, session_id=session_id)
+    save_store(store)
+    return "saved"
+
+
+def delete_rule(index: int, store: dict) -> None:
+    """Remove avoid-rule at index and persist."""
+    if 0 <= index < len(store["avoid_rules"]):
+        store["avoid_rules"].pop(index)
+        save_store(store)
+
+
+def delete_example(index: int, store: dict) -> None:
+    """Remove few-shot example at index and persist."""
+    if 0 <= index < len(store["few_shot_examples"]):
+        store["few_shot_examples"].pop(index)
+        save_store(store)

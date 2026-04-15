@@ -336,6 +336,37 @@ with st.sidebar:
     else:
         st.caption("No saved chats yet.")
 
+    # ── Learned Feedback panel ────────────────────────────────────────────────
+    fb = st.session_state.feedback
+    has_rules = bool(fb.get("avoid_rules"))
+    has_examples = bool(fb.get("few_shot_examples"))
+    if has_rules or has_examples:
+        st.divider()
+        with st.expander("🧠 Learned Feedback", expanded=False):
+            if has_rules:
+                st.markdown("**Avoid Rules**")
+                for i, rule in enumerate(fb["avoid_rules"]):
+                    col_r, col_rd = st.columns([5, 1])
+                    with col_r:
+                        st.caption(rule)
+                    with col_rd:
+                        if st.button("🗑", key=f"del_rule_{i}", help="Delete this rule"):
+                            feedback_store.delete_rule(i, fb)
+                            st.session_state.feedback = fb
+                            st.rerun()
+            if has_examples:
+                st.markdown("**Few-shot Examples**")
+                for i, ex in enumerate(fb["few_shot_examples"]):
+                    preview = ex.get("user", "")[:50] + ("…" if len(ex.get("user", "")) > 50 else "")
+                    col_e, col_ed = st.columns([5, 1])
+                    with col_e:
+                        st.caption(preview)
+                    with col_ed:
+                        if st.button("🗑", key=f"del_ex_{i}", help="Delete this example"):
+                            feedback_store.delete_example(i, fb)
+                            st.session_state.feedback = fb
+                            st.rerun()
+
     st.divider()
     st.markdown("**Session ID**")
     st.code(active_id, language=None)

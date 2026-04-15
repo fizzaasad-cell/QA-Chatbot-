@@ -15,15 +15,19 @@ MAX_RULES = 5
 MAX_EXAMPLES = 3
 INJECT_RULES = 3
 INJECT_EXAMPLES = 2
-STOP_WORDS = {
+STOP_WORDS = {  # used by select_relevant() in Task 5 to filter low-signal query tokens
     "the", "a", "an", "is", "it", "to", "for", "of", "and", "or",
     "in", "on", "with", "that", "this", "when", "what", "how",
     "i", "you", "we", "be", "as", "at", "by", "are", "was", "were",
 }
 _VALIDATION_MODEL = "claude-haiku-4-5-20251001"
 
-_api_key = os.getenv("ANTHROPIC_API_KEY")
-_client = anthropic.Anthropic(api_key=_api_key) if _api_key else None
+def _get_client():
+    """Return an Anthropic client using the current env key, or None if unset."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    return anthropic.Anthropic(api_key=api_key) if api_key else None
+
+_client = _get_client()
 
 
 def mask_sensitive(text: str) -> str:
@@ -42,7 +46,7 @@ def normalize(text: str) -> str:
 def is_duplicate(new_text: str, existing: list[str]) -> bool:
     """Return True if new_text is substantially similar to any item in existing."""
     n = normalize(new_text)
-    if not n:
+    if not n or len(n) < 10:
         return False
     for entry in existing:
         e = normalize(entry)

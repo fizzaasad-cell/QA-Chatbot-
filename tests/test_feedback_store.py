@@ -52,3 +52,8 @@ def test_is_duplicate_returns_false_for_distinct():
 
 def test_is_duplicate_empty_list():
     assert feedback_store.is_duplicate("any rule", []) is False
+
+
+def test_is_duplicate_returns_false_for_very_short_new_text():
+    existing = ["Do not skip boundary values for numeric fields"]
+    assert feedback_store.is_duplicate("skip", existing) is False

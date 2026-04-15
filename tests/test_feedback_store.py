@@ -81,3 +81,58 @@ def test_save_and_load_round_trip(tmp_path, monkeypatch):
     feedback_store.save_store(store)
     loaded = feedback_store.load_store()
     assert loaded["avoid_rules"] == ["rule1"]
+
+
+from unittest.mock import MagicMock, patch
+
+
+def test_validate_negative_returns_true_on_yes():
+    mock_resp = MagicMock()
+    mock_resp.content = [MagicMock(text="yes")]
+    with patch.object(feedback_store._client, "messages") as m:
+        m.create.return_value = mock_resp
+        assert feedback_store.validate_negative("missed boundary values") is True
+
+
+def test_validate_negative_returns_false_on_no():
+    mock_resp = MagicMock()
+    mock_resp.content = [MagicMock(text="no")]
+    with patch.object(feedback_store._client, "messages") as m:
+        m.create.return_value = mock_resp
+        assert feedback_store.validate_negative("I don't like it") is False
+
+
+def test_validate_negative_returns_false_on_api_error():
+    with patch.object(feedback_store._client, "messages") as m:
+        m.create.side_effect = Exception("timeout")
+        assert feedback_store.validate_negative("some comment") is False
+
+
+def test_validate_positive_returns_true_on_yes():
+    mock_resp = MagicMock()
+    mock_resp.content = [MagicMock(text="Yes")]
+    with patch.object(feedback_store._client, "messages") as m:
+        m.create.return_value = mock_resp
+        assert feedback_store.validate_positive("TC_LOGIN_001 - Title: Verify that...") is True
+
+
+def test_validate_positive_returns_false_on_api_error():
+    with patch.object(feedback_store._client, "messages") as m:
+        m.create.side_effect = Exception("network error")
+        assert feedback_store.validate_positive("some response") is False
+
+
+def test_distill_rule_returns_cleaned_sentence():
+    mock_resp = MagicMock()
+    mock_resp.content = [MagicMock(text="Do not skip boundary values for numeric fields.")]
+    with patch.object(feedback_store._client, "messages") as m:
+        m.create.return_value = mock_resp
+        result = feedback_store.distill_rule("you missed boundary values on the password field")
+    assert result == "Do not skip boundary values for numeric fields."
+
+
+def test_distill_rule_falls_back_to_truncated_comment_on_error():
+    with patch.object(feedback_store._client, "messages") as m:
+        m.create.side_effect = Exception("timeout")
+        result = feedback_store.distill_rule("x" * 200)
+    assert len(result) <= 120

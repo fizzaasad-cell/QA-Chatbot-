@@ -126,6 +126,81 @@ function doCopy() {{
     )
 
 
+# ── Per-message feedback widget ───────────────────────────────────────────────
+
+def render_feedback_widget(msg_idx: int, assistant_text: str, user_text: str) -> None:
+    """Render 👍/👎 + optional comment for a single assistant message.
+
+    Tracks per-message state in st.session_state under key f"fb_{msg_idx}".
+    Stages: 'initial' → 'awaiting_comment' → 'done'
+    """
+    state_key = f"fb_{msg_idx}"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = {"stage": "initial"}
+
+    stage = st.session_state[state_key].get("stage", "initial")
+
+    if stage == "done":
+        status = st.session_state[state_key].get("status", "")
+        if status in ("saved", "skipped_duplicate"):
+            st.caption("✅ Feedback saved")
+        elif status == "skipped_validation":
+            st.caption("✅ Noted")
+        else:
+            st.caption("❌ Failed to save (retry)")
+        return
+
+    if stage == "initial":
+        col1, col2, _ = st.columns([1, 1, 10])
+        with col1:
+            if st.button("👍", key=f"up_{msg_idx}", help="Good response"):
+                try:
+                    store = st.session_state.feedback
+                    result = feedback_store.add_positive(
+                        user_text,
+                        assistant_text,
+                        store,
+                        session_id=st.session_state.session_id,
+                    )
+                    st.session_state.feedback = store
+                    st.session_state[state_key] = {"stage": "done", "status": result}
+                except Exception:
+                    st.session_state[state_key] = {"stage": "done", "status": "error"}
+                st.rerun()
+        with col2:
+            if st.button("👎", key=f"down_{msg_idx}", help="Poor response"):
+                st.session_state[state_key]["stage"] = "awaiting_comment"
+                st.rerun()
+
+    elif stage == "awaiting_comment":
+        comment = st.text_input(
+            "What was wrong? (optional)",
+            key=f"comment_{msg_idx}",
+            placeholder="e.g. missed boundary values on the password field",
+        )
+        col1, col2, _ = st.columns([1, 1, 8])
+        with col1:
+            if st.button("Submit", key=f"submit_{msg_idx}", type="primary"):
+                try:
+                    store = st.session_state.feedback
+                    result = feedback_store.add_negative(
+                        comment,
+                        user_text,
+                        assistant_text,
+                        store,
+                        session_id=st.session_state.session_id,
+                    )
+                    st.session_state.feedback = store
+                    st.session_state[state_key] = {"stage": "done", "status": result}
+                except Exception:
+                    st.session_state[state_key] = {"stage": "done", "status": "error"}
+                st.rerun()
+        with col2:
+            if st.button("Cancel", key=f"cancel_{msg_idx}"):
+                st.session_state[state_key]["stage"] = "initial"
+                st.rerun()
+
+
 # ── History helpers ───────────────────────────────────────────────────────────
 
 def load_all_sessions() -> dict:

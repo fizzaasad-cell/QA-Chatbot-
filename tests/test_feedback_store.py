@@ -57,3 +57,27 @@ def test_is_duplicate_empty_list():
 def test_is_duplicate_returns_false_for_very_short_new_text():
     existing = ["Do not skip boundary values for numeric fields"]
     assert feedback_store.is_duplicate("skip", existing) is False
+
+
+def test_load_store_returns_empty_structure_when_file_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(feedback_store, "STORE_FILE", tmp_path / "nonexistent.json")
+    store = feedback_store.load_store()
+    assert store["avoid_rules"] == []
+    assert store["few_shot_examples"] == []
+    assert store["feedback_log"] == []
+
+
+def test_load_store_returns_empty_structure_on_corrupt_file(tmp_path, monkeypatch):
+    f = tmp_path / "bad.json"
+    f.write_text("not valid json")
+    monkeypatch.setattr(feedback_store, "STORE_FILE", f)
+    store = feedback_store.load_store()
+    assert store["avoid_rules"] == []
+
+
+def test_save_and_load_round_trip(tmp_path, monkeypatch):
+    monkeypatch.setattr(feedback_store, "STORE_FILE", tmp_path / "store.json")
+    store = {"avoid_rules": ["rule1"], "few_shot_examples": [], "feedback_log": []}
+    feedback_store.save_store(store)
+    loaded = feedback_store.load_store()
+    assert loaded["avoid_rules"] == ["rule1"]

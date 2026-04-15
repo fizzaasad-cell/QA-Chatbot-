@@ -53,3 +53,25 @@ def is_duplicate(new_text: str, existing: list[str]) -> bool:
         if e and (n in e or e in n):
             return True
     return False
+
+
+def _empty_store() -> dict:
+    return {"avoid_rules": [], "few_shot_examples": [], "feedback_log": []}
+
+
+def load_store() -> dict:
+    """Load feedback_store.json. Returns empty structure if missing or corrupt."""
+    if not STORE_FILE.exists():
+        return _empty_store()
+    try:
+        return json.loads(STORE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return _empty_store()
+
+
+def save_store(store: dict) -> None:
+    """Persist the store dict to feedback_store.json."""
+    STORE_FILE.write_text(
+        json.dumps(store, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )

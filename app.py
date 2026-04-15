@@ -437,14 +437,18 @@ with st.expander("📎 Attach a file (optional — plain text or .md)", expanded
             st.error(f"Unexpected error reading file: {exc}")
 
 # ── Chat history render ───────────────────────────────────────────────────────
-for msg in st.session_state.messages:
+for msg_idx, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        copy_button(msg["content"], key=f"copy_history_{id(msg)}")
+        copy_button(msg["content"], key=f"copy_history_{msg_idx}")
         if msg["role"] == "assistant" and "input_tokens" in msg:
             st.caption(
                 f"Tokens — input: {msg['input_tokens']} | output: {msg['output_tokens']}"
             )
+            user_text = ""
+            if msg_idx > 0 and st.session_state.messages[msg_idx - 1]["role"] == "user":
+                user_text = st.session_state.messages[msg_idx - 1]["content"]
+            render_feedback_widget(msg_idx, msg["content"], user_text)
 
 # ── Chat input ────────────────────────────────────────────────────────────────
 placeholder_text = (
@@ -501,6 +505,7 @@ if user_input:
                     for m in st.session_state.messages
                 ],
                 session_id=st.session_state.session_id,
+                feedback=st.session_state.feedback,
                 langsmith_extra={
                     "metadata": {
                         "session_id": st.session_state.session_id,

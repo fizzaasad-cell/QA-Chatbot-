@@ -116,6 +116,14 @@ def test_validate_positive_returns_true_on_yes():
         assert feedback_store.validate_positive("TC_LOGIN_001 - Title: Verify that...") is True
 
 
+def test_validate_positive_returns_false_on_no():
+    mock_resp = MagicMock()
+    mock_resp.content = [MagicMock(text="no")]
+    with patch.object(feedback_store._client, "messages") as m:
+        m.create.return_value = mock_resp
+        assert feedback_store.validate_positive("mediocre response") is False
+
+
 def test_validate_positive_returns_false_on_api_error():
     with patch.object(feedback_store._client, "messages") as m:
         m.create.side_effect = Exception("network error")
@@ -193,6 +201,32 @@ def test_add_negative_saves_rule_when_valid(tmp_path, monkeypatch):
         result = feedback_store.add_negative("missed boundaries", "user q", "assistant a", store)
     assert result == "saved"
     assert "Do not skip boundary values" in store["avoid_rules"]
+
+
+def test_add_negative_skips_duplicate(tmp_path, monkeypatch):
+    monkeypatch.setattr(feedback_store, "STORE_FILE", tmp_path / "store.json")
+    store = feedback_store._empty_store()
+    existing_rule = "Do not use vague expected results in test cases"
+    store["avoid_rules"].append(existing_rule)
+    with patch.object(feedback_store, "validate_negative", return_value=True), \
+         patch.object(feedback_store, "distill_rule", return_value=existing_rule):
+        result = feedback_store.add_negative(
+            "some comment", "user msg", "assistant msg", store
+        )
+    assert result == "skipped_duplicate"
+    assert store["avoid_rules"].count(existing_rule) == 1
+
+
+def test_add_negative_logs_only_when_comment_is_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr(feedback_store, "STORE_FILE", tmp_path / "store.json")
+    store = feedback_store._empty_store()
+    result = feedback_store.add_negative(
+        "", "user msg", "assistant msg", store
+    )
+    assert result == "skipped_validation"
+    assert store["avoid_rules"] == []
+    assert len(store["feedback_log"]) == 1
+    assert store["feedback_log"][0]["validated"] is False
 
 
 def test_add_negative_skips_when_invalid(tmp_path, monkeypatch):

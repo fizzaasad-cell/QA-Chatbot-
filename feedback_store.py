@@ -226,6 +226,11 @@ def add_negative(
         return "skipped_validation"
 
     rule = distill_rule(masked_comment)
+    if not rule or not rule.strip():
+        _log_entry(store, "down", masked_comment, masked_user, masked_assistant,
+                   validated=True, session_id=session_id)
+        save_store(store)
+        return "skipped_validation"
 
     if is_duplicate(rule, store["avoid_rules"]):
         _log_entry(store, "down", masked_comment, masked_user, masked_assistant, validated=True, distilled_rule=rule, session_id=session_id)
